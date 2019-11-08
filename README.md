@@ -1,4 +1,4 @@
-# Large proccess debug tool
+# Large proccess debug tool 1.0
 
 ### INSTALL
 
