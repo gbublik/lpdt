@@ -1,0 +1,12 @@
+{
+    "name": "gbublik/lpdt",
+    "description": "Отладчик долгих процессов с вебсокет сервером",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "ИBolshagin Vyacheslav",
+            "email": "gbublik@gmail.com"
+        }
+    ],
+    "require": {}
+}
