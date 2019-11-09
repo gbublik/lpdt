@@ -3,7 +3,7 @@ namespace GBublik\Lpdt;
 
 use Exception;
 use GBublik\Lpdt\Commands\Debug;
-use Symfony\Component\Console\Application;
+use GBublik\Lpdt\Application;
 use Symfony\Component\Console\Command\Command;
 
 class LogServer
@@ -44,7 +44,7 @@ class LogServer
 
         $this->application = new Application(self::APPLICATION_NAME, self::APPLICATION_VERSION);
 
-        $this->application->addCommands($this->getCommand());
+        $this->application->addCommands($this->getCommands());
 
         $this->application->run();
     }
@@ -63,5 +63,10 @@ class LogServer
             ];
         }
         return empty($commandName) && !array_key_exists($commandName, $commands) ? $commands : $commands[$commandName];
+    }
+
+    protected function getCommands()
+    {
+        return $this->getCommand();
     }
 }

@@ -13,8 +13,8 @@ require __DIR__.'/../vendor/autoload.php';
  *
  *      1)  В случаии если ваш  обработчик реализуется через класс, то подойдет следующее решение:
  *          В классе - реализающем логику обработчика, реализовать интерфейс GBublik\Lpdt\HandlerInterface.
- *          В интфесе 1 метод "execute". Метод вызывается автоматически во время запуская команды (debug или websocket),
- *          При запуске метода , в него передается объек предназначеный для работы с логом. Объект реализует
+ *          В интерфейсе 1 метод "execute". Метод вызывается автоматически во время запуская команды (debug или websocket),
+ *          При запуске метода, в него передается объек предназначеный для работы с логом. Объект реализует
  *          интерфейс GBublik\Lpdt\Writer\WriterInterface (см. ниже).
  *
  *      2)  Отдельный файл в котором глобально будет достуен объект реализующий
@@ -50,7 +50,7 @@ class MyClassHandler implements HandlerInterface
         // Буду использовать логер в любом методе класса.
         $this->logger = $log;
 
-        // Точка входа в пользовательский обработчки
+        // Запуск алгоритмов пользовательского обработчика
         $this->scanDir(__DIR__ . '/../');
 
         //Финальное сообщение
@@ -58,7 +58,7 @@ class MyClassHandler implements HandlerInterface
     }
 
     /**
-     * Эмулирует полезную работу, в виде обработкий файлов
+     * Эмулирует полезную работу в виде обработкий файлов на жестком диске
      * @param string $target
      */
     protected function scanDir(string $target)
@@ -72,18 +72,17 @@ class MyClassHandler implements HandlerInterface
 
             $item = str_replace([__DIR__, '/.'], '', $item);
 
-            $this->logger->write('Обработка файла: ' . $item);
+            $this->logger->info('Обработка файла: ' . $item);
+            $this->doMakeHardWork();
 
             if ($this->iterator % 20 === 0) {
                 $this->amountErrors++;
                 $this->logger->error('Ошибка в файле ' . $item);
             }
-
-            $this->pause();
         }
     }
 
-    protected function pause()
+    protected function doMakeHardWork()
     {
         $i = 0;
         while ($i < 2000000) {

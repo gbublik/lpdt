@@ -25,11 +25,16 @@ class Debug extends CommandInterface
                 'Number of lines for error output',
                 5
             )->addOption(
-                'stack-write',
-                '-w',
+                'stack-info',
+                '-i',
                 InputOption::VALUE_OPTIONAL,
-                'Number of lines for message output',
+                'Number of lines for information output',
                 1
+            )->addOption(
+                'log-file',
+                '-f',
+                InputOption::VALUE_OPTIONAL,
+                'The path to the file to output data to the log file'
             );
     }
 
