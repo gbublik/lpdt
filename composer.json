@@ -4,9 +4,17 @@
     "license": "MIT",
     "authors": [
         {
-            "name": "ИBolshagin Vyacheslav",
+            "name": "Bolshagin Vyacheslav",
             "email": "gbublik@gmail.com"
         }
     ],
-    "require": {}
+    "require": {
+        "workerman/workerman": "^3.5",
+        "symfony/console": "^4.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "GBublik\\Lpdt\\": "src/"
+        }
+    }
 }
