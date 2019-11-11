@@ -5,9 +5,9 @@ interface WriterInterface
 {
     /**
      * Сообщение с типом "Информация"
-     * @param string $message
+     *  @param string|array $message
      */
-    public function info(string $message);
+    public function info($message);
 
     /**
      * Сообщение с типом "Ошибка"

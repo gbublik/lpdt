@@ -10,9 +10,12 @@ abstract class CommandInterface extends Command
     /** @var HandlerInterface  */
     protected $handler;
 
+    protected $options = [];
+
     public function __construct(HandlerInterface $handler, array $options = [])
     {
         $this->handler = $handler;
+        $this->options = $options;
         parent::__construct();
     }
 }

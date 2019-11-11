@@ -50,11 +50,16 @@ class MyClassHandler implements HandlerInterface
         // Буду использовать логер в любом методе класса.
         $this->logger = $log;
 
+        // Этап скинирования файлов
+        $this->logger->step('Сканироваение файлов');
         // Запуск алгоритмов пользовательского обработчика
         $this->scanDir(__DIR__ . '/../');
 
+        // Этап обработки фейковых данных
+        $this->logger->step('Фейковые данные');
+        $this->fakeData();
         //Финальное сообщение
-        $this->logger->finish(sprintf('Обработано %d файлов , %d файла c ошибками', $this->amount, $this->amountErrors));
+        $this->logger->finish();
     }
 
     /**
@@ -63,29 +68,62 @@ class MyClassHandler implements HandlerInterface
      */
     protected function scanDir(string $target)
     {
+        static $loading = [];
         foreach (glob( $target . '*', GLOB_MARK ) as $item) {
+            $loading[] = $loading;
             $this->amount++;
             if(is_dir($item)){
                 $this->scanDir($item);
+            } else {
+                $this->logger->info($item);
             }
             $this->iterator++;
 
             $item = str_replace([__DIR__, '/.'], '', $item);
 
-            $this->logger->info('Обработка файла: ' . $item);
             $this->doMakeHardWork();
 
             if ($this->iterator % 20 === 0) {
                 $this->amountErrors++;
                 $this->logger->error('Ошибка в файле ' . $item);
             }
+            if ($this->iterator > 50) break;
         }
     }
 
+    /**
+     * Эмулирует полезную работу в виде обработкий данных полученных с удаленного сервера
+     */
+    protected function fakeData() {
+        $this->logger->info('Запрос к удаленному серверу...');
+
+        try {
+            $result = @json_decode(@file_get_contents('http://jsonplaceholder.typicode.com/posts'), true);
+        }catch (Exception $e){
+            $result = [];
+        }
+        if (empty($result)) {
+            $this->logger->error('Сервер не отдал данные');
+        } else {
+            $this->logger->info(sprintf('Прилетело %d записей', count($result) ));
+        }
+
+        foreach ($result as $key => $data) {
+            $this->logger->info($data);
+            $this->doMakeHardWork();
+            if ($key % 40 === 0) {
+                $this->logger->error(sprintf('Ошибка в данных %s:%d', $data['title'], $data['id']));
+            }
+        }
+    }
+
+    /**
+     * Генерирует нагрузку
+     */
     protected function doMakeHardWork()
     {
         $i = 0;
-        while ($i < 2000000) {
+        while ($i < 10000000) {
             $i++;
         }
     }
