@@ -55,9 +55,17 @@ class MyClassHandler implements HandlerInterface
         // Запуск алгоритмов пользовательского обработчика
         $this->scanDir(__DIR__ . '/../');
 
+        $this->logger->critical('Фейковые данные', ['d' => 2, 'f' => 23]);
+
         // Этап обработки фейковых данных
         $this->logger->step('Фейковые данные');
         $this->fakeData();
+
+        // Этап скинирования файлов
+        $this->logger->step('Повторное сканироваение файлов');
+        // Запуск алгоритмов пользовательского обработчика
+        $this->scanDir(__DIR__ . '/../');
+
         //Финальное сообщение
         $this->logger->finish();
     }
@@ -75,7 +83,7 @@ class MyClassHandler implements HandlerInterface
             if(is_dir($item)){
                 $this->scanDir($item);
             } else {
-                $this->logger->info($item);
+                $this->logger->debug($item);
             }
             $this->iterator++;
 
@@ -83,11 +91,20 @@ class MyClassHandler implements HandlerInterface
 
             $this->doMakeHardWork();
 
-            if ($this->iterator % 20 === 0) {
+            if ($this->iterator % 100 === 0) {
                 $this->amountErrors++;
                 $this->logger->error('Ошибка в файле ' . $item);
             }
-            if ($this->iterator > 50) break;
+            if ($this->iterator % 50 === 0) {
+                $this->logger->notice('Уведомил, значит все ок,  ' . $item);
+            }
+            if ($this->iterator % 40 === 0) {
+                $this->logger->info('Новый файл добвлен ' . $item);
+            }
+            if ($this->iterator % 200 === 0) {
+                $this->logger->warning('Предупреждаю, тут не все ок: ' . $item);
+            }
+            //if ($this->iterator > 50) break;
         }
     }
 
@@ -95,7 +112,7 @@ class MyClassHandler implements HandlerInterface
      * Эмулирует полезную работу в виде обработкий данных полученных с удаленного сервера
      */
     protected function fakeData() {
-        $this->logger->info('Запрос к удаленному серверу...');
+        $this->logger->debug('Запрос к удаленному серверу...');
 
         try {
             $result = @json_decode(@file_get_contents('http://jsonplaceholder.typicode.com/posts'), true);
@@ -105,14 +122,18 @@ class MyClassHandler implements HandlerInterface
         if (empty($result)) {
             $this->logger->error('Сервер не отдал данные');
         } else {
-            $this->logger->info(sprintf('Прилетело %d записей', count($result) ));
+            $this->logger->debug(sprintf('Прилетело %d записей', count($result) ));
         }
 
         foreach ($result as $key => $data) {
-            $this->logger->info($data);
-            $this->doMakeHardWork();
-            if ($key % 40 === 0) {
-                $this->logger->error(sprintf('Ошибка в данных %s:%d', $data['title'], $data['id']));
+            $this->logger->info('Обработана запись ' . $data['title'], $data);
+            $this->doMakeHardWork();$this->doMakeHardWork();$this->doMakeHardWork();
+            $this->doMakeHardWork();$this->doMakeHardWork();$this->doMakeHardWork();
+            if ($key % 30 === 0) {
+                $this->logger->alert('Предупреждаю в данных ' . $data['title'], $data);
+            }
+            if ($key % 50 === 0) {
+                $this->logger->error('Ошибка в данных ' . $data['title'], $data);
             }
         }
     }
@@ -123,7 +144,7 @@ class MyClassHandler implements HandlerInterface
     protected function doMakeHardWork()
     {
         $i = 0;
-        while ($i < 10000000) {
+        while ($i < 2000000) {
             $i++;
         }
     }

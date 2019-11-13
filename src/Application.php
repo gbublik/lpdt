@@ -3,6 +3,7 @@ namespace GBublik\Lpdt;
 
 use Symfony\Component\Console\Application as SymfonyApplication;
 use Symfony\Component\Console\Input\InputDefinition;
+use Symfony\Component\Console\Input\InputOption;
 
 class Application extends SymfonyApplication
 {

@@ -3,6 +3,8 @@ namespace GBublik\Lpdt;
 
 use Exception;
 use GBublik\Lpdt\Commands\Debug;
+use GBublik\Lpdt\Commands\Tcp;
+use GBublik\Lpdt\Commands\WebSocket;
 use Symfony\Component\Console\Command\Command;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
@@ -70,7 +72,8 @@ Long process debug tool';
         if (empty($commands)) {
             $commands = [
                 'debug' => new Debug($this->handler, $this->options),
-                //'websocket' => new WebSocket($this->callback)
+                'websocket' => new WebSocket($this->handler),
+                'tcp' => new Tcp($this->handler)
             ];
         }
         return empty($commandName) && !array_key_exists($commandName, $commands) ? $commands : $commands[$commandName];

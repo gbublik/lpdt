@@ -16,19 +16,19 @@ class Debug extends CommandInterface
     protected function configure()
     {
         $this->setName('debug')
-            ->setDescription('Used to debug php scripts in the console.')
+            ->setDescription('Debug mode')
             ->addOption(
-                'stack-error',
+                'queues-errors',
                 '-e',
                 InputOption::VALUE_OPTIONAL,
                 'Error section size.',
-                array_key_exists('stack-error', $this->options) ? $this->options['stack-error'] : null
+                array_key_exists('queues-error', $this->options) ? $this->options['queues-error'] : null
             )->addOption(
-                'stack-message',
+                'queues-messages',
                 '-m',
                 InputOption::VALUE_OPTIONAL,
                 'Information section size',
-                array_key_exists('stack-message', $this->options) ? $this->options['stack-message'] : 1
+                array_key_exists('queues-message', $this->options) ? $this->options['queues-message'] : 1
             )->addOption(
                 'log-file',
                 '-f',
@@ -42,11 +42,11 @@ class Debug extends CommandInterface
                 'Перезаписывать лог файл',
                 array_key_exists('log-overwrite', $this->options) ? $this->options['log-overwrite'] : true
             )->addOption(
-                'log-level',
+                'level',
                 '-l',
                 InputOption::VALUE_OPTIONAL,
-                'Уровень логирования. DEBUG, ERROR',
-                array_key_exists('log-level', $this->options) ? $this->options['log-level'] : 'DEBUG'
+                'Уровень логирования. DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY',
+                array_key_exists('level', $this->options) ? $this->options['level'] : 'DEBUG'
             )->addOption(
                 'log-days',
                 '-d',

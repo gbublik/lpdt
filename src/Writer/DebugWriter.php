@@ -6,6 +6,7 @@ declare(ticks=3000);
 use DateTime;
 use Exception;
 use Symfony\Component\Console\Helper\FormatterHelper;
+use Symfony\Component\Console\Helper\Helper;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
@@ -13,9 +14,9 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Output\ConsoleSectionOutput;
 use Symfony\Component\Console\Formatter\OutputFormatterStyle;
 use Symfony\Component\Console\Helper\QuestionHelper;
-use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 
 /**
  * Пишит данные в консоль
@@ -23,81 +24,98 @@ use Monolog\Handler\StreamHandler;
  */
 class DebugWriter implements WriterInterface
 {
+    protected $options = [];
+
     /** @var OutputInterface  */
     protected $output;
 
     /** @var InputInterface  */
     protected $input;
 
-    /** @var ConsoleSectionOutput */
-    protected $infoSection;
-
-    /** @var ConsoleSectionOutput */
-    protected $greetingSection;
-
-    /** @var ConsoleSectionOutput */
-    protected $tableHeadSection;
-
-    /** @var ConsoleSectionOutput */
-    protected $statisticSection;
-
-    /** @var ConsoleSectionOutput */
-    protected $progressSection;
-
-    /** @var ConsoleSectionOutput */
-    protected $errorSection;
-
-    /** @var integer Message stack size  */
-    protected $stackMessage;
-
-    /** @var integer Error stack size  */
-    protected $stackError;
+    /** @var  ConsoleSectionOutput[]*/
+    protected $appSections = [
+        'greeting', // Greeting on start handler
+        'error', // Сообщения выше или равно NOTICE
+        'messages', // Сообщения ниже NOTICE
+        'tableHead', // Секция для зашаловков таблиц
+        'progress', // Progress bar
+        'statistic', // Общая статистика
+    ];
 
     /** @var Logger  */
     protected $monolog;
 
-    /** @var bool Если включено файловое логирование */
-    protected $monologMode = false;
-
-    /** @var string */
+    /** @var string Текущий этап выполнения обработчика */
     protected $currentStep;
 
-    /** @var DateTime время запуска */
+    /** @var DateTime время запуска обработчика */
     protected $timeStart;
 
+    /** @var Helper[] Вспомогательные библиотеки для вывода данных в консоль */
     protected $helpers = [];
 
-    /** @var  ProgressBar*/
+    /** @var  ProgressBar */
     protected $progressBar;
 
-    protected $quiet = false;
+    /** @var QueueMessages[] Очереди областей вывода в консоль */
+    protected $queues = [
+        'messages', // Элементы информативного типа
+        'errors' // Элементы ошибочного типа
+    ];
+
+    protected $accessLevel = [
+        'DEBUG' => Logger::DEBUG,
+        'INFO' => Logger::INFO,
+        'NOTICE' => Logger::NOTICE,
+        'WARNING' => Logger::WARNING,
+        'ERROR' => Logger::ERROR,
+        'ALERT' => Logger::ALERT,
+        'CRITICAL' => Logger::CRITICAL,
+        null => Logger::DEBUG
+    ];
+
+    protected $access;
+
+    /** @var bool Флаг включенности файлового логирование */
+    protected $flagMonolog = false;
 
     /**
-     * DebugWriter constructor.
+     * Флаг режима вывода сообщений.
+     * Если true выводит все сообщения "портянкой"
+     * @var bool
+     */
+    protected $flagVerbose = false;
+
+    /** @var bool Флаг вывода в консоль */
+    protected $flagQuiet = false;
+
+    /**
      * @param InputInterface $input
      * @param OutputInterface $output
      * @throws Exception
      */
     public function __construct(InputInterface &$input, OutputInterface &$output)
     {
-        $this->output = $output;
         $this->input = $input;
 
-        $this->greetingSection = $this->output->section();
-        $this->errorSection = $this->output->section();
-        $this->infoSection = $this->output->section();
-        $this->tableHeadSection = $this->output->section();
-        $this->progressSection = $this->output->section();
-        $this->statisticSection = $this->output->section();
-
-        $this->stackMessage = $this->input->getOption('stack-message');
-        $this->stackError = $this->input->getOption('stack-error');
-        $this->quiet = $this->input->getOption('quiet');
-
-
+        $this->options = $this->input->getOptions();
+        $this->access = $this->accessLevel[strtoupper($this->options['level'])];
         $this->initMonolog(); // Инициализация файлового логера Monolog
 
-        if (!$this->quiet) {
+        $this->flagQuiet = is_null($this->options['quiet']);
+
+        // Вывод в консоль.
+        if (!$this->flagQuiet) {
+            $this->output = $output;
+            $this->appSections = [
+                'greeting' => $this->output->section(),
+                'error' => $this->output->section(),
+                'messages' => $this->output->section(),
+                'tableHead' => $this->output->section(),
+                'progress' => $this->output->section(),
+                'statistic' => $this->output->section()
+            ];
+
             $this->timeStart = new DateTime;
 
             $this->helpers = [
@@ -106,83 +124,188 @@ class DebugWriter implements WriterInterface
             ];
             $this->setStyles(); // Установка стилей
             $this->setProgressPar(); // Установка прогресс бара
-            $this->greetingSection->writeln('<greeting>Отладочный режим</greeting>');
-            $this->greetingSection->writeln("============================================================================");
+            $this->appSections['greeting']->writeln('<greeting>Отладочный режим</greeting>');
+            $this->appSections['greeting']->writeln("============================================================================");
+
+            if (is_null($this->options['queues-messages'])) {
+                $this->flagVerbose = true;
+            }
+
+            if (!$this->flagVerbose) {
+                $paramQueueErrors = $this->options['queues-errors'];
+                $this->queues = [
+                    'messages' => new QueueMessages($this->input->getOption('queues-messages')),
+                    'errors' => $paramQueueErrors ? new QueueMessages($paramQueueErrors) : $paramQueueErrors
+                ];
+            }
         }
     }
 
     /**
-     * Сообщение с типом "Ошибка"
-     * @param string $message
+     * Отладочная информация. Например: сделали запрос на удаленный сервер, вывели массив c данными
+     * @param mixed $message
+     * @param array $context
+     * @throws Exception
      */
-    public function error(string $message)
+    public function debug(string $message, array $context = [])
     {
-        if ($this->monologMode) {
-            $this->monolog->error($message, $this->getContextLog());
+        if ($this->flagMonolog)
+            $this->monolog->debug(($this->currentStep ? '[' . $this->currentStep . '] ' : '') . $message, $context);
+
+        if ($this->flagQuiet) return; // Если тихий режим дальше не идем
+
+        if ($this->access == Logger::DEBUG) $this->infoMessage($message, $context, 'debug');
+        $this->statistic('debug');
+    }
+
+    /**
+     * Информативное сообщение. Например: Добавлен новый пользователь lpdt_user(1)
+     * @param mixed $message
+     * @param array $context
+     * @param string $prefix
+     * @throws Exception
+     */
+    public function info(string $message, array $context = [], $prefix = 'info')
+    {
+        if ($prefix == 'info' && $this->flagMonolog)
+            $this->monolog->info(($this->currentStep ? '[' . $this->currentStep . '] ' : '') . $message, $context);
+
+        if ($this->flagQuiet) return; // Если тихий режим дальше не идем
+
+        if ($prefix == 'info') $this->statistic('info');
+
+        if ($this->access > Logger::INFO) return;
+
+        $this->infoMessage($message, $context, $prefix);
+    }
+
+    /**
+     * Уведомление. Например: Пользователь lpdt_user(1) добавлен, но у него не указан телефон
+     * @param string $message
+     * @param array $context
+     * @throws Exception
+     */
+    public function notice(string $message, array $context = [])
+    {
+        if ($this->flagMonolog)
+            $this->monolog->notice(($this->currentStep ? '[' . $this->currentStep . '] ' : '') . $message, $context);
+
+        if ($this->flagQuiet) return; // Если тихий режим дальше не идем
+
+        if ($this->access <= Logger::NOTICE) $this->infoMessage($message, $context, 'notice');
+        $this->statistic('notice');
+    }
+
+    /**
+     *  Предупреждение. Например: Пользователь lpdt_user(1) не имеет пароля
+     * @param mixed $message
+     * @param array $context
+     */
+    public function warning(string $message, array $context = [])
+    {
+        if ($this->flagMonolog) {
+            $this->monolog->warning(($this->currentStep ? '[' . $this->currentStep . ']' : null) . $message, $context);
         }
-        if ($this->quiet) return;
 
-        static $logs = [];
+        if ($this->flagQuiet) return; //Если тихий ход
+        if ($this->access <= Logger::WARNING) $this->errorMessage($message, $context, 'warning');
 
-        $logs[] = $message;
-        $message = $this->errorBlock($message);
-        $question = new ConfirmationQuestion($message . ' Продолжить [y/n]?', true,'/^(y)/i');
+        $this->statistic('warning');
+    }
 
-        if (!$this->helpers['question']->ask($this->input, $this->statisticSection, $question)) {
-            $this->finish('The script exited on an error');
-            die();
+    /**
+     * Ошибка
+     * @param mixed $message
+     * @param array $context
+     */
+    public function error(string $message, array $context = [])
+    {
+        if ($this->flagMonolog) {
+            $this->monolog->error(($this->currentStep ? '[' . $this->currentStep . '] ' : null) . $message, $context);
         }
 
-        if (isset($this->stackMessage)) {
-            if (isset($this->stackError) && !$this->stackError) return;
-            elseif (isset($this->stackError) && $this->stackError > 0 && count($logs) > $this->stackError) {
-                array_shift($logs);
-                $this->errorSection->clear();
-                foreach ($logs as $log) $this->errorSection->write($this->errorBlock($log));
-            } else {
-                $this->errorSection->write($message);
-            }
-        } elseif (!isset($this->stackError) || (isset($this->stackError) && !empty($this->stackError))) {
-            $this->infoSection->write($message);
-        }
+        if ($this->flagQuiet) return; //Если тихий ход
+
+        if ($this->access <= Logger::ERROR) $this->errorMessage($message, $context, 'error');
+
         $this->statistic('error');
     }
 
     /**
-     * @param string|array $message
+     * Тревога. Например: Тоже самое что и "Пользователь (1) нет логина", но нужно еще уведомить разработчика
+     * @param mixed $message
+     * @param array $context
      */
-    public function info($message)
+    public function alert(string $message, array $context = [])
     {
-        if ($this->monologMode) $this->monolog->info($message, $this->getContextLog());
-
-        if ($this->quiet) return;
-
-        static $logs = [];
-
-        $logs[] = $message;
-
-        if (isset($this->stackMessage) && !$this->stackMessage)
-            return;
-        elseif (isset($this->stackMessage) && $this->stackMessage > 0 && count($logs) > $this->stackMessage) {
-            array_shift($logs);
-            $this->infoSection->clear();
-            foreach ($logs as $log) $this->infoBlock($log);
-        } else {
-            $this->infoBlock($message);
+        if ($this->flagMonolog) {
+            $this->monolog->alert(($this->currentStep ? '[' . $this->currentStep . '] ' : null) . $message, $context);
         }
-        $this->statistic('info');
+
+        if ($this->flagQuiet) return; //Если тихий ход
+
+        if ($this->access <= Logger::ALERT) $this->errorMessage($message, $context, 'alert');
+
+        $this->statistic('alert');
     }
 
     /**
-     * Установка текущего шага
+     * Критическая ошибка.
+     * Например: Пользователь (1) нет логина. Ошибка критичная, нужно подумать продолжить процесс или нет.
+     * Будет предложен выбор
+     * @param mixed $message
+     * @param array $context
+     */
+    public function critical(string $message, array $context = [])
+    {
+        if ($this->flagMonolog) {
+            $this->monolog->critical(($this->currentStep ? '[' . $this->currentStep . '] ' : null) . $message, $context);
+        }
+
+        if ($this->flagQuiet) return; //Если тихий ход
+
+        $this->statistic('critical');
+
+        if ($this->access <= Logger::ALERT) {
+            $this->errorMessage($message, $context, 'critical');
+            return;
+        }
+
+        $helper = $this->helpers['question'];
+        $this->appSections['statistic']->writeln(
+            sprintf(
+                '<critical>%s</critical>',
+                $message . (!empty($context) ? ' ' . json_encode($context) : '')
+            )
+        );
+        $question = new ConfirmationQuestion('Критическая ошибка. Продолжить выполнение скрипта [yes/no] default: yes', true);
+
+        if (!$helper->ask($this->input, $this->appSections['statistic'], $question)) {
+            $this->finish('Скрипт завершил свою работу на критической ошибке');
+            die();
+        }
+    }
+
+    /**
+     * Авария. Тоже самое что и алерт, но обработчик дальше выполняться не может,
+     * например критическая ошибка в коде
+     * @param mixed $message
+     * @param array $context
+     */
+    public function emergency(string $message, array $context = [])
+    {
+        // TODO: Implement emergency() method.
+    }
+
+    /**
+     * Текущего шага
      * @param string $step
+     * @throws Exception
      */
     public function step(string $step)
     {
-        if ($this->quiet) return;
-
         $this->currentStep = $step;
-        if ($this->monologMode) $this->monolog->info('Этап: ' . $this->currentStep);
+        $this->appSections['messages']->writeln(sprintf('<step>Step: %s</step>', $step));
     }
 
     /**
@@ -191,22 +314,21 @@ class DebugWriter implements WriterInterface
      */
     public function finish(string $message = null)
     {
-        if ($this->quiet) return;
+        if ($this->flagQuiet) return;
 
-       if ($this->stackMessage !== null) {
-            $this->infoSection->clear();
+        if (!is_null($this->options['queues-messages'])) {
+            $this->appSections['messages']->clear();
         }
         if (isset($message)) {
-            $this->infoSection->writeLn('<finish>' . $message . '</finish>');
-            if ($this->monologMode) $this->monolog->info($message);
+            $this->appSections['messages']->writeLn('<finish>' . $message . '</finish>');
+            if ($this->flagMonolog) $this->monolog->info($message);
         } else {
-            $this->infoSection->writeLn('<finish>The script has completed work</finish>');
-            if ($this->monologMode) $this->monolog->info('The script has completed work');
+            $this->appSections['messages']->writeLn('<finish>The script has completed work</finish>');
+            if ($this->flagMonolog) $this->monolog->info('The script has completed work');
         }
 
-
         $this->statistic('finish');
-        $this->progressSection->clear();
+        $this->appSections['progress']->clear();
     }
 
     /**
@@ -217,17 +339,22 @@ class DebugWriter implements WriterInterface
         $this->monolog = new Logger('LPDT');
 
         $file = $this->input->getOption('log-file');
-        $level = $this->input->getOption('log-level');
+        $level = $this->input->getOption('level');
         $overwrite = $this->input->getOption('log-overwrite');
         $daysSave = $this->input->getOption('log-days');
 
         switch (strtoupper($level)) {
+            case 'DEBUG': $level = Logger::DEBUG; break;
+            case 'INFO': $level = Logger::INFO; break;
+            case 'NOTICE': $level = Logger::NOTICE; break;
             case 'ERROR': $level = Logger::ERROR; break;
+            case 'ALERT': $level = Logger::ALERT; break;
+            case 'CRITICAL': $level = Logger::CRITICAL; break;
             default: $level = Logger::DEBUG;
         }
 
         if (!empty($file)) {
-            $this->monologMode = true;
+            $this->flagMonolog = true;
             if (file_exists($file) && !isset($overwrite)) {
                 unlink($file);
             } else if (isset($overwrite)) {
@@ -248,16 +375,9 @@ class DebugWriter implements WriterInterface
         }
     }
 
-    protected function getContextLog()
-    {
-        return [
-            'step' => $this->currentStep
-        ];
-    }
-
     protected function setProgressPar()
     {
-        $this->progressBar = new ProgressBar($this->progressSection);
+        $this->progressBar = new ProgressBar($this->appSections['progress']);
         $this->progressBar->setFormat('%bar% %message% %bar%');
         $this->progressBar->setProgressCharacter(' ');
         $this->progressBar->setEmptyBarCharacter('=');
@@ -280,6 +400,42 @@ class DebugWriter implements WriterInterface
         //Приветствие
         $outputStyle = new OutputFormatterStyle('magenta', null, ['bold', 'blink']);
         $this->output->getFormatter()->setStyle('greeting', $outputStyle);
+
+        //green
+        $outputStyle = new OutputFormatterStyle('green', null);
+        $this->output->getFormatter()->setStyle('green', $outputStyle);
+
+        //step
+        $outputStyle = new OutputFormatterStyle('black', 'green');
+        $this->output->getFormatter()->setStyle('step', $outputStyle);
+
+        //DEBUG
+        $outputStyle = new OutputFormatterStyle('white', null);
+        $this->output->getFormatter()->setStyle('debug', $outputStyle);
+
+        //INFO
+        $outputStyle = new OutputFormatterStyle('default', null);
+        $this->output->getFormatter()->setStyle('info', $outputStyle);
+
+        //NOTICE
+        $outputStyle = new OutputFormatterStyle('blue', null);
+        $this->output->getFormatter()->setStyle('notice', $outputStyle);
+
+        //WARNING
+        $outputStyle = new OutputFormatterStyle('yellow', null);
+        $this->output->getFormatter()->setStyle('warning', $outputStyle);
+
+        //ERROR
+        $outputStyle = new OutputFormatterStyle('red', null);
+        $this->output->getFormatter()->setStyle('error', $outputStyle);
+
+        //ALERT
+        $outputStyle = new OutputFormatterStyle('default', 'red');
+        $this->output->getFormatter()->setStyle('alert', $outputStyle);
+
+        //CRITICAL
+        $outputStyle = new OutputFormatterStyle('default', 'red', ['bold', 'blink']);
+        $this->output->getFormatter()->setStyle('critical', $outputStyle);
     }
 
     protected function statistic($type = 'info')
@@ -294,6 +450,9 @@ class DebugWriter implements WriterInterface
             case 'finish':
             case 'refresh':
                 break;
+            case 'warning':
+            case 'alert':
+            case 'critical':
             case 'error': $error++; break;
             default: $info++; break;
         }
@@ -304,7 +463,7 @@ class DebugWriter implements WriterInterface
         });
 
         $message = sprintf(
-            '<info>Messages: </info>%s; <info>Errors:</info> %s; <info>Mem:</info> %s/%s; <info>Sys-load:</info> %s <info>Time:</info> %s',
+            '<green>Messages: </green>%s; <green>Errors:</green> %s; <green>Mem:</green> %s/%s; <green>Sys-load:</green> %s <green>Time:</green> %s',
             $info,
             $error,
             $this->convertUnitByte($currentMemory),
@@ -316,55 +475,124 @@ class DebugWriter implements WriterInterface
         $this->progressBar->setMessage($this->helpers['formatter']->truncate($this->currentStep, 25) ?? false);
         $this->progressBar->advance();
 
-        $this->statisticSection->clear();
-        $this->statisticSection->write($message);
+        $this->appSections['statistic']->clear();
+        $this->appSections['statistic']->write($message);
     }
 
     /**
-     * @param string|array $message
+     * @param string $message
+     * @param array $context
+     * @param string $prefix
+     * @throws Exception
      */
-    protected function infoBlock($message)
+    protected function infoMessage(string $message, array $context, string $prefix)
     {
-        static $tableHeader;
-        static $maxWidth = 25;
-        //$message = $message['file_name'];
-        if (is_array($message)) {
-            $message = array_slice($message, 0, 5);
-            if (empty($tableHeader)) $tableHeader = new Table($this->tableHeadSection);
-            $tableRow = new Table($this->infoSection);
-            $tableRow->setStyle('compact');
-            $message = array_map(function ($value) use ($maxWidth) {
-                return  '   ' . $this->helpers['formatter']->truncate($value, $maxWidth - 10);
-            }, $message);
+        $message = strtoupper($prefix) . ": " . $message;
+        if (isset($this->options['queues-messages']) && empty($this->options['queues-messages'])) return;
 
-            $c = count($message);
-            for($i = 0; $i <= $c; $i++) $tableHeader->setColumnWidth($i, $maxWidth);
-            $tableHeader->setHeaders(array_keys($message));
-
-            $this->tableHeadSection->clear();
-            $tableHeader->render();
-
-            for($i = 0; $i <= $c; $i++) $tableRow->setColumnMaxWidth($i, $maxWidth + 1);
-            for($i = 0; $i <= $c; $i++) $tableRow->setColumnWidth($i, $maxWidth + 1);
-            $tableRow->addRow($message);
-            $tableRow->render();
+        if ($this->flagVerbose) {
+            $this->printInfoBlock($message, $context, $prefix);
         } else {
-            $this->tableHeadSection->clear();
-
-            if (empty($this->currentStep)) {
-                $this->infoSection->write($message);
-            } else {
-                $this->infoSection->write($this->helpers['formatter']->formatSection(
-                    $this->currentStep,
-                    $message
-                ));
+            $this->queues['messages'][] = [$prefix, $message, $context];
+            $this->appSections['messages']->clear();
+            foreach ($this->queues['messages'] as $qMessage) {
+                $this->printInfoBlock($qMessage[1], $qMessage[2], $qMessage[0]);
             }
         }
     }
 
-    protected function errorBlock(string $message)
+    /**
+     * @param string $message
+     * @param array $context
+     * @param string $style
+     * @throws Exception
+     */
+    protected function printInfoBlock(string $message, array $context = [], string $style = null)
     {
-        return sprintf('<error-label>Err: %s</error-label> <error-context>%s </error-context> ', $this->currentStep, $message);
+        static $tableHeader;
+
+        $maxWidth = 25; // Максимальная ширина таблицы
+
+        $paramQueuesMessages = $this->options['queues-messages'];
+        if(is_integer($paramQueuesMessages) && empty($paramQueuesMessages)) return;
+
+        if ($style) $message = sprintf('<%s>%s</%s>', $style, $message, $style);
+
+        if (empty($context)) {
+            $this->appSections['tableHead']->clear();
+
+            if (empty($this->currentStep)) {
+                $this->appSections['messages']->write($message);
+            } else {
+                $this->appSections['messages']->write($this->helpers['formatter']->formatSection(
+                    sprintf('<%s>%s</%s>', $style, $this->currentStep, $style),
+                    $message
+                ));
+            }
+        } else {
+            $context = array_slice($context, 0, 5);
+            if (empty($tableHeader)) $tableHeader = new Table($this->appSections['tableHead']);
+            $tableRow = new Table($this->appSections['messages']);
+            $tableRow->setStyle('compact');
+            $context = array_map(function ($value) use ($maxWidth) {
+                return  '   ' . $this->helpers['formatter']->truncate($value, $maxWidth - 10);
+            }, $context);
+
+            $c = count($context);
+            for($i = 0; $i <= $c; $i++) $tableHeader->setColumnWidth($i, $maxWidth);
+            $tableHeader->setHeaders(array_keys($context));
+
+            $this->appSections['tableHead']->clear();
+            $tableHeader->render();
+            $this->appSections['tableHead']->writeln($message);
+
+            for($i = 0; $i <= $c; $i++) $tableRow->setColumnMaxWidth($i, $maxWidth + 1);
+            for($i = 0; $i <= $c; $i++) $tableRow->setColumnWidth($i, $maxWidth + 1);
+            $tableRow->addRow($context);
+            $tableRow->render();
+        }
+    }
+
+    protected function errorMessage(string $message, array $context, string $prefix)
+    {
+        $message = strtoupper($prefix) . ": " . $message;
+        $message = sprintf('<%s>%s</%s>', $prefix, $message . (!empty($context) ? ' ' . json_encode($context) : null), $prefix);
+        if ($this->flagVerbose) {
+            if (isset($this->currentStep)) {
+                $this->appSections['messages']->write($this->helpers['formatter']->formatSection(
+                    sprintf('<%s>%s</%s>', $prefix, $this->currentStep, $prefix),
+                    $message
+                ));
+            } else {
+                $this->appSections['messages']->writeln($message);
+            }
+        } else {
+            $this->queues['errors'][] = [$prefix, $message, $context];
+
+            if ($this->options['queues-errors'] > 0) {
+                $this->appSections['error']->clear();
+                foreach ($this->queues['errors'] as $queue) {
+                    $mess = sprintf('<%s>%s</%s>', $queue[0], $queue[1] . (!empty($queue[2]) ? ' ' . json_encode($queue[2]) : null), $queue[0]);
+                    if (isset($this->currentStep)) {
+                        $this->appSections['error']->write($this->helpers['formatter']->formatSection(
+                            sprintf('<%s>%s</%s>', $queue[0], $this->currentStep, $queue[0]),
+                            $mess
+                        ));
+                    } else {
+                        $this->appSections['error']->writeln($mess);
+                    }
+                }
+            } else if (is_null($this->options['queues-errors'])) {
+                if (isset($this->currentStep)) {
+                    $this->appSections['error']->write($this->helpers['formatter']->formatSection(
+                        sprintf('<%s>%s</%s>', $prefix, $this->currentStep, $prefix),
+                        $message
+                    ));
+                } else {
+                    $this->appSections['error']->writeln($message);
+                }
+            }
+        }
     }
 
     protected function convertUnitByte($num)
