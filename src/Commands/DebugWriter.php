@@ -1,5 +1,5 @@
 <?php
-namespace GBublik\Lpdt\Writer;
+namespace GBublik\Lpdt\Commands;
 
 declare(ticks=3000);
 
@@ -69,8 +69,8 @@ class DebugWriter implements WriterInterface
         'NOTICE' => Logger::NOTICE,
         'WARNING' => Logger::WARNING,
         'ERROR' => Logger::ERROR,
-        'ALERT' => Logger::ALERT,
         'CRITICAL' => Logger::CRITICAL,
+        'ALERT' => Logger::ALERT,
         null => Logger::DEBUG
     ];
 
@@ -96,17 +96,17 @@ class DebugWriter implements WriterInterface
      */
     public function __construct(InputInterface &$input, OutputInterface &$output)
     {
-        $this->input = $input;
+        $this->input = &$input;
 
         $this->options = $this->input->getOptions();
         $this->access = $this->accessLevel[strtoupper($this->options['level'])];
         $this->initMonolog(); // Инициализация файлового логера Monolog
 
-        $this->flagQuiet = is_null($this->options['quiet']);
+        $this->flagQuiet = array_key_exists('quiet', $this->options) && is_null($this->options['quiet']);
 
         // Вывод в консоль.
         if (!$this->flagQuiet) {
-            $this->output = $output;
+            $this->output = &$output;
             $this->appSections = [
                 'greeting' => $this->output->section(),
                 'error' => $this->output->section(),
@@ -232,24 +232,6 @@ class DebugWriter implements WriterInterface
     }
 
     /**
-     * Тревога. Например: Тоже самое что и "Пользователь (1) нет логина", но нужно еще уведомить разработчика
-     * @param mixed $message
-     * @param array $context
-     */
-    public function alert(string $message, array $context = [])
-    {
-        if ($this->flagMonolog) {
-            $this->monolog->alert(($this->currentStep ? '[' . $this->currentStep . '] ' : null) . $message, $context);
-        }
-
-        if ($this->flagQuiet) return; //Если тихий ход
-
-        if ($this->access <= Logger::ALERT) $this->errorMessage($message, $context, 'alert');
-
-        $this->statistic('alert');
-    }
-
-    /**
      * Критическая ошибка.
      * Например: Пользователь (1) нет логина. Ошибка критичная, нужно подумать продолжить процесс или нет.
      * Будет предложен выбор
@@ -266,10 +248,44 @@ class DebugWriter implements WriterInterface
 
         $this->statistic('critical');
 
-        if ($this->access <= Logger::ALERT) {
+        if ($this->access <= Logger::CRITICAL) {
             $this->errorMessage($message, $context, 'critical');
-            return;
         }
+        if ($this->access > Logger::CRITICAL) return;
+
+        $helper = $this->helpers['question'];
+        $this->appSections['statistic']->writeln(
+            sprintf(
+                '<critical>%s</critical>',
+                $message . (!empty($context) ? ' ' . json_encode($context) : '')
+            )
+        );
+        $question = new ConfirmationQuestion('Критическая ошибка. Продолжить выполнение скрипта [yes/no] default: yes', true);
+
+        if (!$helper->ask($this->input, $this->appSections['statistic'], $question)) {
+            $this->finish('Скрипт завершил свою работу на критической ошибке');
+            die();
+        }
+    }
+
+    /**
+     * Тревога. Например: Тоже самое что и "Пользователь (1) нет логина", но нужно еще уведомить разработчика
+     * @param mixed $message
+     * @param array $context
+     */
+    public function alert(string $message, array $context = [])
+    {
+        if ($this->flagMonolog) {
+            $this->monolog->alert(($this->currentStep ? '[' . $this->currentStep . '] ' : null) . $message, $context);
+        }
+
+        if ($this->flagQuiet) return; //Если тихий ход
+
+        $this->statistic('alert');
+
+        if ($this->access <= Logger::ALERT) $this->errorMessage($message, $context, 'alert');
+
+        if ($this->access > Logger::ALERT) return;
 
         $helper = $this->helpers['question'];
         $this->appSections['statistic']->writeln(
@@ -294,7 +310,10 @@ class DebugWriter implements WriterInterface
      */
     public function emergency(string $message, array $context = [])
     {
-        // TODO: Implement emergency() method.
+        if ($this->flagMonolog) {
+            $this->monolog->emergency(($this->currentStep ? '[' . $this->currentStep . '] ' : null) . $message, $context);
+        }
+        die();
     }
 
     /**
@@ -304,6 +323,7 @@ class DebugWriter implements WriterInterface
      */
     public function step(string $step)
     {
+        if ($this->flagQuiet) return; // Если тихий режим дальше не идем
         $this->currentStep = $step;
         $this->appSections['messages']->writeln(sprintf('<step>Step: %s</step>', $step));
     }
@@ -338,10 +358,10 @@ class DebugWriter implements WriterInterface
     {
         $this->monolog = new Logger('LPDT');
 
-        $file = $this->input->getOption('log-file');
-        $level = $this->input->getOption('level');
-        $overwrite = $this->input->getOption('log-overwrite');
-        $daysSave = $this->input->getOption('log-days');
+        $file = $this->options['log-file'];
+        $level = $this->options['level'];
+        $overwrite = $this->options['log-overwrite'];
+        $daysSave = $this->options['log-days'];
 
         switch (strtoupper($level)) {
             case 'DEBUG': $level = Logger::DEBUG; break;
@@ -377,6 +397,7 @@ class DebugWriter implements WriterInterface
 
     protected function setProgressPar()
     {
+        if (is_null($this->options['light'])) return;
         $this->progressBar = new ProgressBar($this->appSections['progress']);
         $this->progressBar->setFormat('%bar% %message% %bar%');
         $this->progressBar->setProgressCharacter(' ');
@@ -429,17 +450,18 @@ class DebugWriter implements WriterInterface
         $outputStyle = new OutputFormatterStyle('red', null);
         $this->output->getFormatter()->setStyle('error', $outputStyle);
 
-        //ALERT
-        $outputStyle = new OutputFormatterStyle('default', 'red');
-        $this->output->getFormatter()->setStyle('alert', $outputStyle);
-
         //CRITICAL
-        $outputStyle = new OutputFormatterStyle('default', 'red', ['bold', 'blink']);
+        $outputStyle = new OutputFormatterStyle('default', 'red');
         $this->output->getFormatter()->setStyle('critical', $outputStyle);
+
+        //ALERT
+        $outputStyle = new OutputFormatterStyle('default', 'red', ['bold', 'blink']);
+        $this->output->getFormatter()->setStyle('alert', $outputStyle);
     }
 
     protected function statistic($type = 'info')
     {
+        if (is_null($this->options['light'])) return;
         static $info = 0;
         static $error = 0;
         static $limitMemory;
@@ -472,8 +494,11 @@ class DebugWriter implements WriterInterface
             $this->timeStart->diff(new DateTime)->format('%H:%I:%S')
         );
 
-        $this->progressBar->setMessage($this->helpers['formatter']->truncate($this->currentStep, 25) ?? false);
-        $this->progressBar->advance();
+        if (!is_null($this->options['light'])) {
+            $this->progressBar->setMessage($this->helpers['formatter']->truncate($this->currentStep, 25) ?? false);
+            $this->progressBar->advance();
+        }
+
 
         $this->appSections['statistic']->clear();
         $this->appSections['statistic']->write($message);
@@ -518,13 +543,13 @@ class DebugWriter implements WriterInterface
 
         if ($style) $message = sprintf('<%s>%s</%s>', $style, $message, $style);
 
-        if (empty($context)) {
+        if (empty($context) || is_null($this->options['light'])) {
             $this->appSections['tableHead']->clear();
 
             if (empty($this->currentStep)) {
-                $this->appSections['messages']->write($message);
+                $this->appSections['messages']->writeln($message);
             } else {
-                $this->appSections['messages']->write($this->helpers['formatter']->formatSection(
+                $this->appSections['messages']->writeln($this->helpers['formatter']->formatSection(
                     sprintf('<%s>%s</%s>', $style, $this->currentStep, $style),
                     $message
                 ));
@@ -559,7 +584,7 @@ class DebugWriter implements WriterInterface
         $message = sprintf('<%s>%s</%s>', $prefix, $message . (!empty($context) ? ' ' . json_encode($context) : null), $prefix);
         if ($this->flagVerbose) {
             if (isset($this->currentStep)) {
-                $this->appSections['messages']->write($this->helpers['formatter']->formatSection(
+                $this->appSections['messages']->writeln($this->helpers['formatter']->formatSection(
                     sprintf('<%s>%s</%s>', $prefix, $this->currentStep, $prefix),
                     $message
                 ));
@@ -574,7 +599,7 @@ class DebugWriter implements WriterInterface
                 foreach ($this->queues['errors'] as $queue) {
                     $mess = sprintf('<%s>%s</%s>', $queue[0], $queue[1] . (!empty($queue[2]) ? ' ' . json_encode($queue[2]) : null), $queue[0]);
                     if (isset($this->currentStep)) {
-                        $this->appSections['error']->write($this->helpers['formatter']->formatSection(
+                        $this->appSections['error']->writeln($this->helpers['formatter']->formatSection(
                             sprintf('<%s>%s</%s>', $queue[0], $this->currentStep, $queue[0]),
                             $mess
                         ));
@@ -584,7 +609,7 @@ class DebugWriter implements WriterInterface
                 }
             } else if (is_null($this->options['queues-errors'])) {
                 if (isset($this->currentStep)) {
-                    $this->appSections['error']->write($this->helpers['formatter']->formatSection(
+                    $this->appSections['error']->writeln($this->helpers['formatter']->formatSection(
                         sprintf('<%s>%s</%s>', $prefix, $this->currentStep, $prefix),
                         $message
                     ));

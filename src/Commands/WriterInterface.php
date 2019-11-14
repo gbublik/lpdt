@@ -1,5 +1,5 @@
 <?php
-namespace GBublik\Lpdt\Writer;
+namespace GBublik\Lpdt\Commands;
 
 /**
  * Интерфейс "писца" - Объект пишущий в лог

@@ -1,7 +1,7 @@
 <?php
 namespace GBublik\Lpdt;
 
-use GBublik\Lpdt\Writer\WriterInterface;
+use GBublik\Lpdt\Commands\WriterInterface;
 
 /**
  * Интерфейс обработчика (обработчика)

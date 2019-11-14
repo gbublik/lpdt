@@ -2,7 +2,6 @@
 namespace GBublik\Lpdt\Commands;
 
 use Exception;
-use GBublik\Lpdt\Writer\DebugWriter;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -16,50 +15,7 @@ class Debug extends CommandInterface
     protected function configure()
     {
         $this->setName('debug')
-            ->setDescription('Debug mode')
-            ->addOption(
-                'queues-errors',
-                '-e',
-                InputOption::VALUE_OPTIONAL,
-                'Error section size.',
-                array_key_exists('queues-error', $this->options) ? $this->options['queues-error'] : null
-            )->addOption(
-                'queues-messages',
-                '-m',
-                InputOption::VALUE_OPTIONAL,
-                'Information section size',
-                array_key_exists('queues-message', $this->options) ? $this->options['queues-message'] : 1
-            )->addOption(
-                'log-file',
-                '-f',
-                InputOption::VALUE_OPTIONAL,
-                'Путь к файлу лога',
-                array_key_exists('log-file', $this->options) ? $this->options['log-file'] : null
-            )->addOption(
-                'log-overwrite',
-                '-o',
-                InputOption::VALUE_OPTIONAL,
-                'Перезаписывать лог файл',
-                array_key_exists('log-overwrite', $this->options) ? $this->options['log-overwrite'] : true
-            )->addOption(
-                'level',
-                '-l',
-                InputOption::VALUE_OPTIONAL,
-                'Уровень логирования. DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY',
-                array_key_exists('level', $this->options) ? $this->options['level'] : 'DEBUG'
-            )->addOption(
-                'log-days',
-                '-d',
-                InputOption::VALUE_OPTIONAL,
-                'Сколько дней хранить лог файлы',
-                array_key_exists('log-days', $this->options) ? $this->options['log-days'] : 5
-            )->addOption(
-                'quiet',
-                '-q',
-                InputOption::VALUE_OPTIONAL,
-                'Do not output any message',
-                array_key_exists('quiet', $this->options) ? $this->options['quiet'] : false
-            );
+            ->setDescription('Debug mode');
     }
 
     /**

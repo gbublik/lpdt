@@ -9,10 +9,11 @@
         }
     ],
     "require": {
-        "workerman/workerman": "^3.5",
         "symfony/console": "^4.3",
         "monolog/monolog": "^2.0",
-      "ext-json": "*"
+      "ext-json": "*",
+      "ext-sockets": "*",
+      "ext-pcntl": "*"
     },
     "autoload": {
         "psr-4": {

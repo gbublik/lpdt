@@ -1,7 +1,11 @@
 <?php
 
-namespace GBublik\Lpdt\Writer;
+namespace GBublik\Lpdt\Commands;
 
+/**
+ * Очередь
+ * @package GBublik\Lpdt\Writer
+ */
 class QueueMessages implements \ArrayAccess, \Iterator
 {
     protected $queue = [];

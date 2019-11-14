@@ -1,5 +1,5 @@
 <?php
-use GBublik\Lpdt\Writer\WriterInterface;
+use GBublik\Lpdt\Commands\WriterInterface;
 use GBublik\Lpdt\HandlerInterface;
 use GBublik\Lpdt\LogServer;
 

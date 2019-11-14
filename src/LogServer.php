@@ -16,7 +16,7 @@ class LogServer
 '█░░ █▀▄ █▀▄ ▀█▀ 
 █░▄ █░█ █░█ ░█░ 
 ▀▀▀ █▀░ ▀▀░ ░▀░ 
-Long process debug tool';
+PSR-3 Long process debug tool';
 
     /** @var string  */
     const APPLICATION_VERSION = '2.0';
@@ -72,8 +72,8 @@ Long process debug tool';
         if (empty($commands)) {
             $commands = [
                 'debug' => new Debug($this->handler, $this->options),
-                'websocket' => new WebSocket($this->handler),
-                'tcp' => new Tcp($this->handler)
+                'websocket' => new WebSocket($this->handler, $this->options),
+                'tcp' => new Tcp($this->handler, $this->options)
             ];
         }
         return empty($commandName) && !array_key_exists($commandName, $commands) ? $commands : $commands[$commandName];
