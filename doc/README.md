@@ -1,6 +1,6 @@
 # Отладчик консольных php обработчиков
 
-![Help](images/app.png)
+![Help](images/demo.png)
 
 1. [Введение](/#introduction)
 2. [Установка](/#install)

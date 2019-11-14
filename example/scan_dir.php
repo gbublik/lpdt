@@ -55,7 +55,7 @@ class MyClassHandler implements HandlerInterface
         // Запуск алгоритмов пользовательского обработчика
         $this->scanDir(__DIR__ . '/../');
 
-        $this->logger->critical('Фейковые данные', ['d' => 2, 'f' => 23]);
+        $this->logger->critical('Фейковые данные', ['email' => 'exemple@ru', 'id' => '1']);
 
         // Этап обработки фейковых данных
         $this->logger->step('Фейковые данные');
@@ -95,7 +95,7 @@ class MyClassHandler implements HandlerInterface
                 $this->amountErrors++;
                 $this->logger->error('Ошибка в файле ' . $item);
             }
-            if ($this->iterator % 50 === 0) {
+            if ($this->iterator % 400 === 0) {
                 $this->logger->notice('Уведомил, значит все ок,  ' . $item);
             }
             if ($this->iterator % 40 === 0) {
@@ -129,7 +129,7 @@ class MyClassHandler implements HandlerInterface
             $this->logger->info('Обработана запись ' . $data['title'], $data);
             $this->doMakeHardWork();$this->doMakeHardWork();$this->doMakeHardWork();
             $this->doMakeHardWork();$this->doMakeHardWork();$this->doMakeHardWork();
-            if ($key % 30 === 0) {
+            if ($key % 90 === 0) {
                 $this->logger->alert('Предупреждаю в данных ' . $data['title'], $data);
             }
             if ($key % 50 === 0) {
