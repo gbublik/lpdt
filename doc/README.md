@@ -205,7 +205,6 @@ user@user:~/$ php ./scan_dir_handler.php
 ```console
 user@user:~/$ php ./scan_dir_handler.php list
 ```
-![Help](images/app.png)
 
 ## Отладочный режим (debug)
 
