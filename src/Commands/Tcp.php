@@ -68,6 +68,7 @@ class Tcp extends CommandInterface
         if ($pid == -1) {
             throw new Exception('Не удалось породить дочерний процесс');
         } else if ($pid) {
+            // Основной процесс
             while(true) {
                 if (!$server->isRun() || pcntl_waitpid(-1, $status, WNOHANG) == -1) {
                     $server->stop();
@@ -101,6 +102,7 @@ class Tcp extends CommandInterface
                 }
             }
         } else {
+            //Дочерний процесс
             //call_user_func([$this->handler, 'execute'], new TcpWriter($input, $output));
             $socket  = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
             socket_connect($socket , '0.0.0.0', 8090);

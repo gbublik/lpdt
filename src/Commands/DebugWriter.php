@@ -1,7 +1,6 @@
 <?php
 namespace GBublik\Lpdt\Commands;
 
-declare(ticks=3000);
 
 use DateTime;
 use Exception;

@@ -55,7 +55,7 @@ class QueueMessages implements \ArrayAccess, \Iterator
 
     public function key()
     {
-        return $this->key($this->queue);
+        return key($this->queue);
     }
 
     public function valid()
