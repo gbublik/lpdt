@@ -10,7 +10,7 @@
     ],
     "require": {
         "symfony/console": "^4.3",
-        "monolog/monolog": "^2.0",
+        "monolog/monolog": "^1.25.2",
       "ext-json": "*",
       "ext-sockets": "*",
       "ext-pcntl": "*"
